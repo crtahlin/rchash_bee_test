@@ -92,14 +92,15 @@ def run_bee_test(config):
         "command_executed",
         "rchash_duration_seconds", # This will be the curl execution time if no specific duration is returned by Bee.
         "timestamp_end_command",
-        "reserveSizeWithinRadius", # Corrected field name
-        "reserveSize",             # New field added
+        "reserveSizeWithinRadius",
+        "reserveSize",
         "overlay",
         "pullsyncRate",
-        "status_storageRadius", # Differentiate from config storageRadius
+        "status_storageRadius",
         "connectedPeers",
         "isFullySynced",
-        "isHealthy"
+        "isHealthy",
+        "num_neighborhoods" # New field added
     ]
 
     # Check if log file exists to determine if header needs to be written
@@ -151,8 +152,8 @@ def run_bee_test(config):
             status_url = "http://localhost:1633/status"
             status_data = get_bee_data(status_url)
             if status_data:
-                log_entry["reserveSizeWithinRadius"] = status_data.get("reserveSizeWithinRadius", "N/A") # Corrected
-                log_entry["reserveSize"] = status_data.get("reserveSize", "N/A")                         # Added
+                log_entry["reserveSizeWithinRadius"] = status_data.get("reserveSizeWithinRadius", "N/A")
+                log_entry["reserveSize"] = status_data.get("reserveSize", "N/A")
                 log_entry["overlay"] = status_data.get("overlay", "N/A")
                 log_entry["pullsyncRate"] = status_data.get("pullsyncRate", "N/A")
                 log_entry["status_storageRadius"] = status_data.get("storageRadius", "N/A")
@@ -174,6 +175,16 @@ def run_bee_test(config):
                 print("Could not retrieve Bee redistribution state data.")
                 for key in ["isFullySynced", "isHealthy"]:
                     log_entry[key] = "ERROR"
+
+            # Fetch neighborhoods data and count entries
+            neighborhoods_url = "http://localhost:1633/status/neighborhoods"
+            neighborhoods_data = get_bee_data(neighborhoods_url)
+            if neighborhoods_data and isinstance(neighborhoods_data, list):
+                log_entry["num_neighborhoods"] = len(neighborhoods_data)
+                print(f"Number of Neighborhoods: {log_entry['num_neighborhoods']}")
+            else:
+                print("Could not retrieve or parse Bee neighborhoods data.")
+                log_entry["num_neighborhoods"] = "ERROR"
 
             # Write the collected data to the CSV file
             csv_writer.writerow(log_entry)
