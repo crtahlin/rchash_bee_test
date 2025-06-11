@@ -92,7 +92,8 @@ def run_bee_test(config):
         "command_executed",
         "rchash_duration_seconds", # This will be the curl execution time if no specific duration is returned by Bee.
         "timestamp_end_command",
-        "reserveWithinRadius",
+        "reserveSizeWithinRadius", # Corrected field name
+        "reserveSize",             # New field added
         "overlay",
         "pullsyncRate",
         "status_storageRadius", # Differentiate from config storageRadius
@@ -150,15 +151,16 @@ def run_bee_test(config):
             status_url = "http://localhost:1633/status"
             status_data = get_bee_data(status_url)
             if status_data:
-                log_entry["reserveWithinRadius"] = status_data.get("reserveWithinRadius", "N/A")
+                log_entry["reserveSizeWithinRadius"] = status_data.get("reserveSizeWithinRadius", "N/A") # Corrected
+                log_entry["reserveSize"] = status_data.get("reserveSize", "N/A")                         # Added
                 log_entry["overlay"] = status_data.get("overlay", "N/A")
                 log_entry["pullsyncRate"] = status_data.get("pullsyncRate", "N/A")
                 log_entry["status_storageRadius"] = status_data.get("storageRadius", "N/A")
                 log_entry["connectedPeers"] = status_data.get("connectedPeers", "N/A")
-                print(f"Bee Status: reserveWithinRadius={log_entry['reserveWithinRadius']}, overlay={log_entry['overlay']}, connectedPeers={log_entry['connectedPeers']}")
+                print(f"Bee Status: reserveSizeWithinRadius={log_entry['reserveSizeWithinRadius']}, reserveSize={log_entry['reserveSize']}, overlay={log_entry['overlay']}, connectedPeers={log_entry['connectedPeers']}")
             else:
                 print("Could not retrieve Bee status data.")
-                for key in ["reserveWithinRadius", "overlay", "pullsyncRate", "status_storageRadius", "connectedPeers"]:
+                for key in ["reserveSizeWithinRadius", "reserveSize", "overlay", "pullsyncRate", "status_storageRadius", "connectedPeers"]:
                     log_entry[key] = "ERROR"
 
             # Fetch redistribution state data
