@@ -59,7 +59,7 @@ def get_bee_data(endpoint_url):
         print(f"Stdout: {e.stdout}")
         print(f"Stderr: {e.stderr}")
     except json.JSONDecodeError:
-        print(f"Error: Could not decode JSON from {endpoint_url}. Raw output: {result.stdout}")
+        print(f"Error: Could not decode JSON from {endpoint_url}. Raw output: '{result.stdout.strip()}'")
     except FileNotFoundError:
         print(f"Error: 'curl' command not found. Please ensure curl is installed and in your PATH.")
     except Exception as e:
@@ -90,7 +90,7 @@ def run_bee_test(config):
     fieldnames = [
         "timestamp_start_command",
         "command_executed",
-        "rchash_duration_seconds", # This will be the curl execution time if no specific duration is returned by Bee.
+        "rchash_duration_seconds", # This will be the Bee-reported duration or "N/A"
         "timestamp_end_command",
         "reserveSizeWithinRadius",
         "reserveSize",
@@ -100,7 +100,7 @@ def run_bee_test(config):
         "connectedPeers",
         "isFullySynced",
         "isHealthy",
-        "num_neighborhoods" # New field added
+        "num_neighborhoods"
     ]
 
     # Check if log file exists to determine if header needs to be written
@@ -135,17 +135,16 @@ def run_bee_test(config):
             end_time = datetime.datetime.now()
             log_entry["timestamp_end_command"] = end_time.isoformat()
 
-            # Calculate duration of the curl command execution
-            rchash_exec_duration = (end_time - start_time).total_seconds()
-            log_entry["rchash_duration_seconds"] = rchash_exec_duration
-
-            if rchash_data and 'duration' in rchash_data:
+            if rchash_data and 'durationSeconds' in rchash_data:
                 # If the Bee node's rchash endpoint explicitly returns a duration, use that.
-                # Otherwise, we use the curl command execution time.
-                log_entry["rchash_duration_seconds"] = rchash_data['duration']
-                print(f"rchash calculation duration (from Bee): {rchash_data['duration']:.2f} seconds")
+                log_entry["rchash_duration_seconds"] = rchash_data['durationSeconds']
+                print(f"rchash calculation duration (from Bee): {rchash_data['durationSeconds']:.2f} seconds")
             else:
-                print(f"rchash command executed in {rchash_exec_duration:.2f} seconds (no specific duration returned by Bee node).")
+                # If durationSeconds is not found, record "N/A" as requested,
+                # and still print the curl execution time for debugging purposes.
+                rchash_exec_duration = (end_time - start_time).total_seconds()
+                log_entry["rchash_duration_seconds"] = "N/A"
+                print(f"rchash command executed in {rchash_exec_duration:.2f} seconds (no 'durationSeconds' found or command failed, recording 'N/A').")
 
 
             # Fetch status data
@@ -179,8 +178,6 @@ def run_bee_test(config):
             # Fetch neighborhoods data and count entries
             neighborhoods_url = "http://localhost:1633/status/neighborhoods"
             neighborhoods_data = get_bee_data(neighborhoods_url)
-            # Check if neighborhoods_data is a dictionary and contains the 'neighborhoods' key,
-            # and if the value associated with 'neighborhoods' is a list.
             if neighborhoods_data and isinstance(neighborhoods_data, dict) and \
                'neighborhoods' in neighborhoods_data and isinstance(neighborhoods_data['neighborhoods'], list):
                 log_entry["num_neighborhoods"] = len(neighborhoods_data['neighborhoods'])
