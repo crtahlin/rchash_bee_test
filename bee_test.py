@@ -179,11 +179,14 @@ def run_bee_test(config):
             # Fetch neighborhoods data and count entries
             neighborhoods_url = "http://localhost:1633/status/neighborhoods"
             neighborhoods_data = get_bee_data(neighborhoods_url)
-            if neighborhoods_data and isinstance(neighborhoods_data, list):
-                log_entry["num_neighborhoods"] = len(neighborhoods_data)
+            # Check if neighborhoods_data is a dictionary and contains the 'neighborhoods' key,
+            # and if the value associated with 'neighborhoods' is a list.
+            if neighborhoods_data and isinstance(neighborhoods_data, dict) and \
+               'neighborhoods' in neighborhoods_data and isinstance(neighborhoods_data['neighborhoods'], list):
+                log_entry["num_neighborhoods"] = len(neighborhoods_data['neighborhoods'])
                 print(f"Number of Neighborhoods: {log_entry['num_neighborhoods']}")
             else:
-                print("Could not retrieve or parse Bee neighborhoods data.")
+                print("Could not retrieve or parse Bee neighborhoods data as expected.")
                 log_entry["num_neighborhoods"] = "ERROR"
 
             # Write the collected data to the CSV file
