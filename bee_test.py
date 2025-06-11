@@ -44,8 +44,11 @@ def get_bee_data(endpoint_url):
         endpoint_url (str): The full URL of the Bee node endpoint.
 
     Returns:
-        dict or None: Parsed JSON data if successful, None otherwise.
+        tuple (dict or None, str or None): Parsed JSON data and raw stdout string.
+                                           Returns (None, raw_stdout) if JSON parsing fails,
+                                           or (None, None) if curl command fails completely.
     """
+    raw_stdout = None
     try:
         # Use sudo for curl to ensure it can connect if the Bee node is running
         # with elevated privileges or on a restricted port.
@@ -53,18 +56,24 @@ def get_bee_data(endpoint_url):
         # -X GET: Specify GET request method
         command = ['sudo', 'curl', '-sX', 'GET', endpoint_url]
         result = subprocess.run(command, capture_output=True, text=True, check=True)
-        return json.loads(result.stdout)
+        raw_stdout = result.stdout
+        try:
+            parsed_json = json.loads(raw_stdout)
+            return parsed_json, raw_stdout
+        except json.JSONDecodeError:
+            print(f"Error: Could not decode JSON from {endpoint_url}. Raw output: '{raw_stdout.strip()}'")
+            return None, raw_stdout # Return raw output even if JSON decode fails
     except subprocess.CalledProcessError as e:
         print(f"Error executing curl for {endpoint_url}: {e}")
         print(f"Stdout: {e.stdout}")
         print(f"Stderr: {e.stderr}")
-    except json.JSONDecodeError:
-        print(f"Error: Could not decode JSON from {endpoint_url}. Raw output: '{result.stdout.strip()}'")
+        return None, e.stdout # Return raw stdout even on curl error for "failed" check
     except FileNotFoundError:
         print(f"Error: 'curl' command not found. Please ensure curl is installed and in your PATH.")
+        return None, None
     except Exception as e:
         print(f"An unexpected error occurred while fetching data from {endpoint_url}: {e}")
-    return None
+        return None, None
 
 def run_bee_test(config):
     """
@@ -90,7 +99,7 @@ def run_bee_test(config):
     fieldnames = [
         "timestamp_start_command",
         "command_executed",
-        "rchash_duration_seconds", # This will be the Bee-reported duration or "N/A"
+        "rchash_duration_seconds", # This will be the Bee-reported duration, "failed", or "N/A"
         "timestamp_end_command",
         "reserveSizeWithinRadius",
         "reserveSize",
@@ -130,26 +139,45 @@ def run_bee_test(config):
             log_entry["timestamp_start_command"] = start_time.isoformat()
 
             print(f"Executing command: {rchash_command_display}")
-            rchash_data = get_bee_data(rchash_url)
+            # Get both parsed JSON and raw output for robust failure checking
+            rchash_data, raw_rchash_output = get_bee_data(rchash_url)
 
             end_time = datetime.datetime.now()
             log_entry["timestamp_end_command"] = end_time.isoformat()
 
-            if rchash_data and 'durationSeconds' in rchash_data:
+            # Determine rchash_duration_seconds based on failure conditions or success
+            rchash_duration_to_log = "N/A" # Default value
+            console_duration_message_suffix = ""
+
+            # Check for failure conditions first
+            is_failed = False
+            if raw_rchash_output and "failed" in raw_rchash_output.lower():
+                is_failed = True
+            # Check for "code": 500 if JSON data was successfully parsed and is a dictionary
+            if rchash_data and isinstance(rchash_data, dict) and rchash_data.get("code") == 500:
+                is_failed = True
+
+            if is_failed:
+                rchash_duration_to_log = "failed"
+                console_duration_message_suffix = " (recorded as 'failed' due to error/failure message)"
+            elif rchash_data and 'durationSeconds' in rchash_data:
                 # If the Bee node's rchash endpoint explicitly returns a duration, use that.
-                log_entry["rchash_duration_seconds"] = rchash_data['durationSeconds']
-                print(f"rchash calculation duration (from Bee): {rchash_data['durationSeconds']:.2f} seconds")
+                rchash_duration_to_log = rchash_data['durationSeconds']
+                console_duration_message_suffix = f" (from Bee: {rchash_data['durationSeconds']:.2f} seconds)"
             else:
-                # If durationSeconds is not found, record "N/A" as requested,
-                # and still print the curl execution time for debugging purposes.
-                rchash_exec_duration = (end_time - start_time).total_seconds()
-                log_entry["rchash_duration_seconds"] = "N/A"
-                print(f"rchash command executed in {rchash_exec_duration:.2f} seconds (no 'durationSeconds' found or command failed, recording 'N/A').")
+                # This case handles scenarios where no specific duration is found AND no explicit failure condition was met.
+                # The 'N/A' default is already set.
+                console_duration_message_suffix = " (no 'durationSeconds' found, recorded 'N/A')"
+
+            log_entry["rchash_duration_seconds"] = rchash_duration_to_log
+            # Print the curl command's wall-clock duration for context, along with the logged status
+            curl_exec_duration = (end_time - start_time).total_seconds()
+            print(f"Curl command execution time: {curl_exec_duration:.2f} seconds{console_duration_message_suffix}")
 
 
             # Fetch status data
             status_url = "http://localhost:1633/status"
-            status_data = get_bee_data(status_url)
+            status_data, _ = get_bee_data(status_url) # We don't need raw output for status checks here
             if status_data:
                 log_entry["reserveSizeWithinRadius"] = status_data.get("reserveSizeWithinRadius", "N/A")
                 log_entry["reserveSize"] = status_data.get("reserveSize", "N/A")
@@ -165,7 +193,7 @@ def run_bee_test(config):
 
             # Fetch redistribution state data
             redistribution_url = "http://localhost:1633/redistributionstate"
-            redistribution_data = get_bee_data(redistribution_url)
+            redistribution_data, _ = get_bee_data(redistribution_url) # We don't need raw output for redistribution checks here
             if redistribution_data:
                 log_entry["isFullySynced"] = redistribution_data.get("isFullySynced", "N/A")
                 log_entry["isHealthy"] = redistribution_data.get("isHealthy", "N/A")
@@ -177,7 +205,7 @@ def run_bee_test(config):
 
             # Fetch neighborhoods data and count entries
             neighborhoods_url = "http://localhost:1633/status/neighborhoods"
-            neighborhoods_data = get_bee_data(neighborhoods_url)
+            neighborhoods_data, _ = get_bee_data(neighborhoods_url) # We don't need raw output for neighborhoods checks here
             if neighborhoods_data and isinstance(neighborhoods_data, dict) and \
                'neighborhoods' in neighborhoods_data and isinstance(neighborhoods_data['neighborhoods'], list):
                 log_entry["num_neighborhoods"] = len(neighborhoods_data['neighborhoods'])
